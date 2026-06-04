@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package movies;
+
+option go_package = "./generated";
+
+service MovieService {
+  rpc GetMovie (GetMovieRequest) returns (Movie);
+  rpc CreateMovie (CreateMovieRequest) returns (Movie);
+  rpc ListMovies (ListMoviesRequest) returns (stream Movie);
+  rpc BulkImportMovies (stream CreateMovieRequest) returns (ImportResult);
+}
+
+message Movie {
+  string id = 1;
+  string title = 2;
+  string genre = 3;
+  int32  year = 4;
+  string director = 5;
+  string synopsis = 6;
+  repeated string cast = 7;
+  string poster_url = 8;
+}
+
+message GetMovieRequest {
+  string id = 1;
+}
+
+message CreateMovieRequest {
+  string title = 1;
+  string genre = 2;
+  int32  year = 3;
+  string director = 4;
+  string synopsis = 5;
+  repeated string cast = 6;
+  string poster_url = 7;
+}
+
+message ListMoviesRequest {
+  string genre = 1;
+}
+
+message ImportResult {
+  int32 imported = 1;
+  int32 failed   = 2;
+  repeated string errors = 3;
+}

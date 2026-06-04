@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package reviews;
+
+service ReviewService {
+  rpc AddReview (AddReviewRequest) returns (Review);
+  rpc GetMovieRating (GetRatingRequest) returns (Rating);
+  rpc GetMovieReviews (GetReviewsRequest) returns (stream Review);
+  rpc LiveReviewSession (stream ReviewUpdate) returns (stream RatingUpdate);
+}
+
+message Review {
+  string id = 1;
+  string movie_id = 2;
+  string author = 3;
+  float  rating = 4;
+  string comment = 5;
+  string created_at = 6;
+}
+
+message Rating {
+  string movie_id     = 1;
+  float  average      = 2;
+  int32  total_reviews = 3;
+}
+
+message AddReviewRequest {
+  string movie_id = 1;
+  string author = 2;
+  float  rating = 3;
+  string comment  = 4;
+}
+
+message GetRatingRequest {
+  string movie_id = 1;
+}
+
+message GetReviewsRequest {
+  string movie_id = 1;
+}
+
+message ReviewUpdate {
+  string movie_id = 1;
+  string author = 2;
+  float  rating = 3;
+  string comment = 4;
+}
+
+message RatingUpdate {
+  string movie_id = 1;
+  float  new_average = 2;
+  int32  total_reviews = 3;
+}
