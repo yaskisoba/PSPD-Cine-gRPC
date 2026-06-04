@@ -25,7 +25,7 @@ O CineGRPC é um catálogo de filmes distribuído implementado sobre uma arquite
 
 - **Módulo A** (`movies-service`) — serviço de filmes em **Go**, servidor gRPC na porta 50051
 - **Módulo B** (`reviews-service`) — serviço de avaliações em **Node.js**, servidor gRPC na porta 50052
-- **Módulo P** (`gateway`) — API Gateway em **Python/FastAPI**, traduz REST → gRPC na porta 8000
+- **Módulo P** (`gateway`) — API Gateway em **Python/FastAPI**, traduz REST -> gRPC na porta 8000
 - **Frontend** — SPA em **React + Vite**, interface web na porta 3000
 
 O projeto demonstra os **quatro tipos de comunicação gRPC**: Unary, Server Streaming, Client Streaming e Bidirectional Streaming.
