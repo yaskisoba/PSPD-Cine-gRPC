@@ -45,15 +45,19 @@ O projeto demonstra os **quatro tipos de comunicação gRPC**: Unary, Server Str
 
 ## Como Rodar
 
-### Com Docker Compose (recomendado)
+### Com Docker Compose (recomendado para backend)
+
+Sobe movies-service, reviews-service e gateway.
 
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
 Acesse:
-- Frontend: http://localhost:3000
 - API REST / Swagger: http://localhost:8000/docs
+- Health check: http://localhost:8000/health
+
+Os filmes seed usam IDs fixos `"1"`–`"8"`, compartilhados com as avaliações seed do reviews-service.
 
 ### Com Minikube (Kubernetes)
 
@@ -62,12 +66,18 @@ minikube start --driver=docker
 minikube docker-env | Invoke-Expression   # Windows PowerShell
 
 docker build -t cinegrpc/movies-service:latest  -f movies-service/Dockerfile .
-docker build -t cinegrpc/reviews-service:latest reviews-service/
-docker build -t cinegrpc/gateway:latest         gateway/
-docker build -t cinegrpc/frontend:latest        frontend/
+docker build -t cinegrpc/reviews-service:latest -f reviews-service/Dockerfile .
+docker build -t cinegrpc/gateway:latest         -f gateway/Dockerfile .
+docker build -t cinegrpc/frontend:latest        -f frontend/Dockerfile .
 
 kubectl apply -f k8s/deployment.yaml
 minikube service frontend-service -n cinegrpc --url
+```
+
+Ou use o script completo:
+
+```bash
+./scripts/deploy-minikube.sh
 ```
 
 ---

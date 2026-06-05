@@ -58,10 +58,10 @@ function addReview(call, callback) {
   const { movie_id, author, rating, comment } = call.request;
   console.log(`[ReviewsService] AddReview called | movie_id=${movie_id}`);
 
-  if (!movie_id || !author || !comment) {
+  if (!movie_id || !author) {
     return callback({
       code: grpc.status.INVALID_ARGUMENT,
-      message: 'Campos obrigatórios ausentes: movie_id, author, comment',
+      message: 'Campos obrigatórios ausentes: movie_id, author',
     });
   }
   if (rating == null || rating < 0.0 || rating > 10.0) {
@@ -76,7 +76,7 @@ function addReview(call, callback) {
     movie_id,
     author,
     rating,
-    comment,
+    comment: comment || '',
     created_at: new Date().toISOString(),
   };
 

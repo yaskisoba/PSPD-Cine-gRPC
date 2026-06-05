@@ -35,49 +35,49 @@ func newMovieServer() *movieServer {
 func (s *movieServer) seedMovies() {
 	seed := []*pb.Movie{
 		{
-			Title: "O Poderoso Chefão", Genre: "Crime", Year: 1972,
+			Id: "1", Title: "O Poderoso Chefão", Genre: "Crime", Year: 1972,
 			Director: "Francis Ford Coppola",
 			Synopsis: "A saga da família Corleone no mundo do crime organizado americano.",
 			Cast:     []string{"Marlon Brando", "Al Pacino", "James Caan"},
 		},
 		{
-			Title: "Interestelar", Genre: "Ficção Científica", Year: 2014,
+			Id: "2", Title: "Interestelar", Genre: "Ficção Científica", Year: 2014,
 			Director: "Christopher Nolan",
 			Synopsis: "Astronautas viajam por um buraco de minhoca em busca de um novo lar para a humanidade.",
 			Cast: []string{"Matthew McConaughey", "Anne Hathaway", "Jessica Chastain"},
 		},
 		{
-			Title: "Parasita", Genre: "Drama", Year: 2019,
+			Id: "3", Title: "Parasita", Genre: "Drama", Year: 2019,
 			Director: "Bong Joon-ho",
 			Synopsis: "Uma família pobre se infiltra progressivamente na vida de uma família rica.",
 			Cast: []string{"Song Kang-ho", "Lee Sun-kyun", "Cho Yeo-jeong"},
 		},
 		{
-			Title: "Clube da Luta", Genre: "Drama", Year: 1999,
+			Id: "4", Title: "Clube da Luta", Genre: "Drama", Year: 1999,
 			Director: "David Fincher",
 			Synopsis: "Um insone e um vendedor de sabão formam um clube de luta clandestino.",
 			Cast: []string{"Brad Pitt", "Edward Norton", "Helena Bonham Carter"},
 		},
 		{
-			Title: "Matrix", Genre: "Ficção Científica", Year: 1999,
+			Id: "5", Title: "Matrix", Genre: "Ficção Científica", Year: 1999,
 			Director: "Lana Wachowski",
 			Synopsis: "Um hacker descobre que a realidade é uma simulação controlada por máquinas.",
 			Cast: []string{"Keanu Reeves", "Laurence Fishburne", "Carrie-Anne Moss"},
 		},
 		{
-			Title: "Cidade de Deus", Genre: "Crime", Year: 2002,
+			Id: "6", Title: "Cidade de Deus", Genre: "Crime", Year: 2002,
 			Director: "Fernando Meirelles",
 			Synopsis: "Traficantes numa favela carioca vistos pelo ponto de vista de um jovem fotógrafo.",
 			Cast: []string{"Alexandre Rodrigues", "Leandro Firmino", "Phellipe Haagensen"},
 		},
 		{
-			Title: "Coringa", Genre: "Drama", Year: 2019,
+			Id: "7", Title: "Coringa", Genre: "Drama", Year: 2019,
 			Director: "Todd Phillips",
 			Synopsis: "A origem do vilão mais famoso dos quadrinhos em uma Gotham decadente.",
 			Cast: []string{"Joaquin Phoenix", "Robert De Niro", "Zazie Beetz"},
 		},
 		{
-			Title: "Oppenheimer", Genre: "Drama", Year: 2023,
+			Id: "8", Title: "Oppenheimer", Genre: "Drama", Year: 2023,
 			Director: "Christopher Nolan",
 			Synopsis: "O físico que liderou o projeto que criou a primeira bomba atômica.",
 			Cast: []string{"Cillian Murphy", "Emily Blunt", "Matt Damon"},
@@ -85,7 +85,6 @@ func (s *movieServer) seedMovies() {
 	}
 
 	for _, m := range seed {
-		m.Id = uuid.NewString()
 		s.movies[m.Id] = m
 	}
 }

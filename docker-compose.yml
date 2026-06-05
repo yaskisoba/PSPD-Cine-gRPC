@@ -1,0 +1,33 @@
+services:
+  movies-service:
+    build:
+      context: .
+      dockerfile: movies-service/Dockerfile
+    expose:
+      - "50051"
+
+  reviews-service:
+    build:
+      context: .
+      dockerfile: reviews-service/Dockerfile
+    expose:
+      - "50052"
+
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      MOVIES_SERVICE_ADDR: movies-service:50051
+      REVIEWS_SERVICE_ADDR: reviews-service:50052
+    depends_on:
+      - movies-service
+      - reviews-service
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
