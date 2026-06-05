@@ -13,7 +13,7 @@ Prof. Fernando W. Cruz
 | Matrícula | Aluno |
 |-----------|-------|
 | —         | Aluno 1 |
-| —         | Aluno 2 |
+| 211061707 | Felipe de Sousa Coelho |
 | —         | Aluno 3 |
 | —         | Aluno 4 |
 
