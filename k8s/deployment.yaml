@@ -1,0 +1,307 @@
+# CineGRPC — Kubernetes Manifests
+# Single-file, single namespace: cinegrpc
+# Tested with: kubectl apply --dry-run=client -f k8s/deployment.yaml
+#
+# Deploy order: Namespace → movies-service → reviews-service → gateway → frontend
+# Gateway uses initContainers to wait for both gRPC backends before starting.
+# All images use imagePullPolicy: Never (required for Minikube local images).
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cinegrpc
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Service A — movies-service (Go gRPC server :50051)
+# ─────────────────────────────────────────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: movies-service
+  namespace: cinegrpc
+  labels:
+    app: movies-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: movies-service
+  template:
+    metadata:
+      labels:
+        app: movies-service
+    spec:
+      containers:
+        - name: movies-service
+          image: cinegrpc/movies-service:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 50051
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "250m"
+              memory: "128Mi"
+          readinessProbe:
+            tcpSocket:
+              port: 50051
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: 50051
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: movies-service
+  namespace: cinegrpc
+  labels:
+    app: movies-service
+spec:
+  type: ClusterIP
+  selector:
+    app: movies-service
+  ports:
+    - port: 50051
+      targetPort: 50051
+      protocol: TCP
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Service B — reviews-service (Node.js gRPC server :50052)
+# ─────────────────────────────────────────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reviews-service
+  namespace: cinegrpc
+  labels:
+    app: reviews-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reviews-service
+  template:
+    metadata:
+      labels:
+        app: reviews-service
+    spec:
+      containers:
+        - name: reviews-service
+          image: cinegrpc/reviews-service:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 50052
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "250m"
+              memory: "128Mi"
+          readinessProbe:
+            tcpSocket:
+              port: 50052
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: 50052
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reviews-service
+  namespace: cinegrpc
+  labels:
+    app: reviews-service
+spec:
+  type: ClusterIP
+  selector:
+    app: reviews-service
+  ports:
+    - port: 50052
+      targetPort: 50052
+      protocol: TCP
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Module P — gateway (Python/FastAPI REST→gRPC :8000)
+# initContainers ensure both gRPC backends are up before the gateway starts.
+# ─────────────────────────────────────────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: cinegrpc
+  labels:
+    app: gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+    spec:
+      initContainers:
+        - name: wait-for-movies
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z movies-service 50051; do
+                echo "waiting for movies-service:50051..."
+                sleep 2
+              done
+              echo "movies-service is ready"
+        - name: wait-for-reviews
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z reviews-service 50052; do
+                echo "waiting for reviews-service:50052..."
+                sleep 2
+              done
+              echo "reviews-service is ready"
+      containers:
+        - name: gateway
+          image: cinegrpc/gateway:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8000
+              protocol: TCP
+          env:
+            - name: MOVIES_SERVICE_ADDR
+              value: "movies-service:50051"
+            - name: REVIEWS_SERVICE_ADDR
+              value: "reviews-service:50052"
+          resources:
+            requests:
+              cpu: "150m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            failureThreshold: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-service
+  namespace: cinegrpc
+  labels:
+    app: gateway
+spec:
+  type: NodePort
+  selector:
+    app: gateway
+  ports:
+    - port: 8000
+      targetPort: 8000
+      nodePort: 30800
+      protocol: TCP
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Frontend — React + Vite (nginx :80)
+#
+# IMPORTANT: VITE_API_URL is a build-time variable (Vite bakes it into the
+# static bundle). It cannot be injected at runtime via K8s env vars.
+# The deploy script builds the image with:
+#   --build-arg VITE_API_URL=http://<minikube-ip>:30800
+# The frontend Dockerfile must declare: ARG VITE_API_URL
+# ─────────────────────────────────────────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: cinegrpc
+  labels:
+    app: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: cinegrpc/frontend:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 80
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "100m"
+              memory: "64Mi"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+  namespace: cinegrpc
+  labels:
+    app: frontend
+spec:
+  type: NodePort
+  selector:
+    app: frontend
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30300
+      protocol: TCP
