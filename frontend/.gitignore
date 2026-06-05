@@ -1,0 +1,11 @@
+node_modules
+dist
+dist-ssr
+*.local
+.vite
+npm-debug.log*
+
+# Variáveis de ambiente locais (use .env.example como referência)
+.env
+.env.*
+!.env.example

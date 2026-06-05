@@ -31,3 +31,15 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        # O browser fala com o gateway publicado no host (localhost:8000).
+        VITE_API_URL: http://localhost:8000
+    ports:
+      - "3000:80"
+    depends_on:
+      - gateway
