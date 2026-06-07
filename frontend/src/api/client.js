@@ -1,7 +1,5 @@
 import axios from 'axios'
 
-// Base URL do Gateway (P). Definida em build-time pelo Vite via VITE_API_URL.
-// Fallback para localhost:8000 (dev sem .env).
 const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 const api = axios.create({
@@ -10,32 +8,59 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-// ── Movies (Módulo A, via Gateway) ───────────────────────────────────────────
+api.interceptors.request.use((config) => {
+  if (import.meta.env.DEV) {
+    console.log(`[API] ${config.method?.toUpperCase()} ${config.url}`)
+  }
+  return config
+})
 
-// GET /movies?genre=  → Server Streaming (ListMovies) agregado em lista JSON
+// Extract FastAPI `detail` field and re-throw as a standard Error.
+// Preserve `status` so callers can still branch on HTTP status codes.
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    const detail = err?.response?.data?.detail
+    const status = err?.response?.status
+    if (detail) {
+      const error = new Error(typeof detail === 'string' ? detail : JSON.stringify(detail))
+      error.status = status
+      return Promise.reject(error)
+    }
+    return Promise.reject(err)
+  },
+)
+
+// ── Movies ───────────────────────────────────────────────────────────────────
+
+// GET /movies?genre=<optional>
 export const listMovies = (genre) =>
   api.get('/movies', { params: genre ? { genre } : {} }).then((r) => r.data)
 
-// GET /movies/{id}  → Unary (GetMovie) + Unary (GetMovieRating) + Server Stream (GetMovieReviews)
-// Retorna { movie, rating, reviews }
-export const getMovie = (id) => api.get(`/movies/${id}`).then((r) => r.data)
+// GET /movies/:id — returns { movie, rating, reviews }
+export const getMovieDetail = (id) => api.get(`/movies/${id}`).then((r) => r.data)
 
-// POST /movies  → Unary (CreateMovie)
-export const createMovie = (body) => api.post('/movies', body).then((r) => r.data)
+// Backward-compat alias
+export const getMovie = getMovieDetail
 
-// ── Reviews (Módulo B, via Gateway) ──────────────────────────────────────────
+// POST /movies
+export const createMovie = (data) => api.post('/movies', data).then((r) => r.data)
 
-// POST /movies/{id}/reviews  → Unary (AddReview)
-export const addReview = (movieId, body) =>
-  api.post(`/movies/${movieId}/reviews`, body).then((r) => r.data)
+// POST /movies/:id/reviews
+export const addReview = (movieId, data) =>
+  api.post(`/movies/${movieId}/reviews`, data).then((r) => r.data)
 
-// GET /movies/{id}/rating  → Unary (GetMovieRating)
+// POST /movies/bulk-import
+export const bulkImportMovies = (movies) =>
+  api.post('/movies/bulk-import', movies).then((r) => r.data)
+
+// GET /movies/:id/rating
 export const getRating = (movieId) =>
   api.get(`/movies/${movieId}/rating`).then((r) => r.data)
 
-// ── Infra ────────────────────────────────────────────────────────────────────
-
-export const getHealth = () => api.get('/health').then((r) => r.data)
+// GET /health
+export const checkHealth = () => api.get('/health').then((r) => r.data)
+export const getHealth = checkHealth
 
 export const API_BASE_URL = baseURL
 

@@ -1,89 +1,131 @@
 import { useState } from 'react'
 import { addReview } from '../api/client.js'
 
-// Formulário de nova avaliação. Valida autor (obrigatório) e nota (0–10),
-// chama POST /movies/{id}/reviews (Unary AddReview no Módulo B) e notifica o pai.
-export default function AddReviewForm({ movieId, onAdded }) {
+export default function AddReviewForm({ movieId, onSuccess, onClose }) {
   const [author, setAuthor] = useState('')
-  const [rating, setRating] = useState('8')
+  const [rating, setRating] = useState(0)
   const [comment, setComment] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
+  const [success, setSuccess] = useState(false)
+
+  // Per-field blur validation errors
+  const [touched, setTouched] = useState({ author: false, comment: false, rating: false })
+
+  const authorError = touched.author && author.trim().length < 2
+    ? 'O nome precisa ter pelo menos 2 caracteres.'
+    : null
+
+  const commentError = touched.comment && comment.trim().length < 5
+    ? 'O comentário precisa ter pelo menos 5 caracteres.'
+    : null
+
+  const ratingError = touched.rating && (rating < 0 || rating > 10)
+    ? 'A nota deve estar entre 0 e 10.'
+    : null
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    setTouched({ author: true, comment: true, rating: true })
     setError(null)
 
-    const ratingNum = parseFloat(rating)
-    if (!author.trim()) return setError('Informe o seu nome.')
-    if (Number.isNaN(ratingNum) || ratingNum < 0 || ratingNum > 10)
-      return setError('A nota deve ser um número entre 0 e 10.')
+    if (author.trim().length < 2) return
+    if (comment.trim().length < 5) return
+    if (rating < 0 || rating > 10) return
 
     setSubmitting(true)
     try {
       const review = await addReview(movieId, {
         author: author.trim(),
-        rating: ratingNum,
+        rating,
         comment: comment.trim(),
       })
-      setAuthor('')
-      setRating('8')
-      setComment('')
-      onAdded?.(review)
+      setSuccess(true)
+      setTimeout(() => {
+        onSuccess?.(review)
+      }, 800)
     } catch (err) {
-      setError(
-        err?.response?.data?.detail || 'Não foi possível enviar a avaliação. Tente novamente.',
-      )
+      setError(err?.message || 'Não foi possível enviar a avaliação. Tente novamente.')
     } finally {
       setSubmitting(false)
     }
   }
 
+  if (success) {
+    return (
+      <div className="review-form review-form--success">
+        <p className="review-form__success-msg">✓ Avaliação enviada com sucesso!</p>
+      </div>
+    )
+  }
+
   return (
-    <form className="review-form" onSubmit={handleSubmit}>
+    <form className="review-form" onSubmit={handleSubmit} noValidate>
       <h3>Deixe sua avaliação</h3>
 
-      <div className="review-form__row">
-        <label className="field">
-          <span>Seu nome</span>
-          <input
-            type="text"
-            value={author}
-            onChange={(e) => setAuthor(e.target.value)}
-            placeholder="Ex.: Maria Silva"
-            maxLength={60}
-          />
-        </label>
+      <label className="field">
+        <span>Seu nome *</span>
+        <input
+          type="text"
+          value={author}
+          onChange={(e) => setAuthor(e.target.value)}
+          onBlur={() => setTouched((t) => ({ ...t, author: true }))}
+          placeholder="Ex.: Maria Silva"
+          maxLength={100}
+        />
+        {authorError && <span className="field__error">{authorError}</span>}
+      </label>
 
-        <label className="field field--rating">
-          <span>Nota (0–10)</span>
-          <input
-            type="number"
-            min="0"
-            max="10"
-            step="0.5"
-            value={rating}
-            onChange={(e) => setRating(e.target.value)}
-          />
-        </label>
+      <div className="field">
+        <span>Nota: <strong>{rating === 0 ? 'sem nota' : `${rating}/10`}</strong></span>
+        <div className="star-row">
+          {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+            <button
+              key={n}
+              type="button"
+              className={`star-btn${rating === n ? ' star-btn--active' : ''}`}
+              onClick={() => {
+                setRating(rating === n ? 0 : n)
+                setTouched((t) => ({ ...t, rating: true }))
+              }}
+              aria-label={`Nota ${n}`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+        {ratingError && <span className="field__error">{ratingError}</span>}
       </div>
 
       <label className="field">
-        <span>Comentário (opcional)</span>
+        <span>Comentário *</span>
         <textarea
           value={comment}
           onChange={(e) => setComment(e.target.value)}
+          onBlur={() => setTouched((t) => ({ ...t, comment: true }))}
           placeholder="O que achou do filme?"
-          rows={3}
+          rows={4}
           maxLength={500}
         />
+        {commentError && <span className="field__error">{commentError}</span>}
       </label>
 
       {error && <p className="form-error">{error}</p>}
 
-      <button type="submit" className="btn btn--primary" disabled={submitting}>
-        {submitting ? 'Enviando…' : 'Enviar avaliação'}
-      </button>
+      <div className="review-form__actions">
+        {onClose && (
+          <button type="button" className="btn" onClick={onClose}>
+            Cancelar
+          </button>
+        )}
+        <button type="submit" className="btn btn--primary" disabled={submitting}>
+          {submitting ? (
+            <><span className="spinner spinner--sm" /> Enviando…</>
+          ) : (
+            'Enviar avaliação'
+          )}
+        </button>
+      </div>
     </form>
   )
 }
