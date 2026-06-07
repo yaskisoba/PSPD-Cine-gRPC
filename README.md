@@ -45,19 +45,32 @@ O projeto demonstra os **quatro tipos de comunicação gRPC**: Unary, Server Str
 
 ## Como Rodar
 
-### Com Docker Compose (recomendado para backend)
+### Com Docker Compose (recomendado — sobe o sistema inteiro)
 
-Sobe movies-service, reviews-service e gateway.
+Sobe os 4 módulos: movies-service, reviews-service, gateway **e o frontend**.
 
 ```bash
 docker compose up --build
 ```
 
 Acesse:
+- Frontend (interface web): http://localhost:3000
 - API REST / Swagger: http://localhost:8000/docs
 - Health check: http://localhost:8000/health
 
 Os filmes seed usam IDs fixos `"1"`–`"8"`, compartilhados com as avaliações seed do reviews-service.
+
+### Frontend em modo dev (hot reload)
+
+Com o backend já no ar (compose acima ou serviços individuais), rode o front com Vite:
+
+```bash
+cd frontend
+npm install
+npm run dev          # → http://localhost:3000
+```
+
+A URL do gateway é configurada em `frontend/.env` (`VITE_API_URL`, padrão `http://localhost:8000`).
 
 ### Com Minikube (Kubernetes)
 
