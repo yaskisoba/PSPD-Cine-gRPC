@@ -8,14 +8,14 @@ Universidade de Brasília – UnB / FCTE
 Engenharia de Software  
 PSPD – Programação para Sistemas Paralelos e Distribuídos  
 Prof. Fernando W. Cruz  
-2024/2025
+2026
 
-| Matrícula | Aluno |
-|-----------|-------|
-| —         | Aluno 1 |
-| 211061707 | Felipe de Sousa Coelho |
-| —         | Aluno 3 |
-| —         | Aluno 4 |
+| Matrícula | Aluno                             |
+| --------- | --------------------------------- |
+| 221034973 | Bruno Cunha Vasconcelos de Araújo |
+| 211030729 | Eric Rabelo Borges                |
+| 211061707 | Felipe de Sousa Coelho            |
+| 200029088 | Yasmim Oliveira Rosa              |
 
 ---
 
@@ -34,12 +34,12 @@ O projeto demonstra os **quatro tipos de comunicação gRPC**: Unary, Server Str
 
 ## Stack Tecnológica
 
-| Módulo            | Tecnologia       | Função                          | Porta       |
-|-------------------|------------------|---------------------------------|-------------|
-| Frontend          | React + Vite     | Interface Web (HClient)         | 3000 (HTTP) |
-| Gateway – P       | Python + FastAPI | API Gateway + gRPC Stub         | 8000 (HTTP) |
-| Movies Service – A | Go (Golang)     | Catálogo de filmes (gRPC Server) | 50051 (gRPC) |
-| Reviews Service – B | Node.js        | Avaliações e notas (gRPC Server) | 50052 (gRPC) |
+| Módulo              | Tecnologia       | Função                           | Porta        |
+| ------------------- | ---------------- | -------------------------------- | ------------ |
+| Frontend            | React + Vite     | Interface Web (HClient)          | 3000 (HTTP)  |
+| Gateway – P         | Python + FastAPI | API Gateway + gRPC Stub          | 8000 (HTTP)  |
+| Movies Service – A  | Go (Golang)      | Catálogo de filmes (gRPC Server) | 50051 (gRPC) |
+| Reviews Service – B | Node.js          | Avaliações e notas (gRPC Server) | 50052 (gRPC) |
 
 ---
 
@@ -54,6 +54,7 @@ docker compose up --build
 ```
 
 Acesse:
+
 - Frontend (interface web): http://localhost:3000
 - API REST / Swagger: http://localhost:8000/docs
 - Health check: http://localhost:8000/health
@@ -121,19 +122,19 @@ PSPD-Cine-gRPC/
 
 ## Tipos de Comunicação gRPC Implementados
 
-| Tipo                | Serviço       | Método             | Descrição                          |
-|---------------------|---------------|--------------------|------------------------------------|
-| Unary               | Movies (A)    | `GetMovie`         | Busca um filme por ID              |
-| Unary               | Movies (A)    | `CreateMovie`      | Cria um novo filme                 |
-| Unary               | Reviews (B)   | `AddReview`        | Adiciona uma avaliação             |
-| Unary               | Reviews (B)   | `GetMovieRating`   | Retorna nota média do filme        |
-| Server Streaming    | Movies (A)    | `ListMovies`       | Lista filmes com filtro de gênero  |
-| Server Streaming    | Reviews (B)   | `GetMovieReviews`  | Lista avaliações de um filme       |
-| Client Streaming    | Movies (A)    | `BulkImportMovies` | Importa múltiplos filmes em lote   |
-| Bidirectional       | Reviews (B)   | `LiveReviewSession`| Sessão de avaliação em tempo real  |
+| Tipo             | Serviço     | Método              | Descrição                         |
+| ---------------- | ----------- | ------------------- | --------------------------------- |
+| Unary            | Movies (A)  | `GetMovie`          | Busca um filme por ID             |
+| Unary            | Movies (A)  | `CreateMovie`       | Cria um novo filme                |
+| Unary            | Reviews (B) | `AddReview`         | Adiciona uma avaliação            |
+| Unary            | Reviews (B) | `GetMovieRating`    | Retorna nota média do filme       |
+| Server Streaming | Movies (A)  | `ListMovies`        | Lista filmes com filtro de gênero |
+| Server Streaming | Reviews (B) | `GetMovieReviews`   | Lista avaliações de um filme      |
+| Client Streaming | Movies (A)  | `BulkImportMovies`  | Importa múltiplos filmes em lote  |
+| Bidirectional    | Reviews (B) | `LiveReviewSession` | Sessão de avaliação em tempo real |
 
 ---
 
 ## Licença
 
-Projeto acadêmico — Universidade de Brasília, 2024/2025.
+Projeto acadêmico — Universidade de Brasília, 2026.
