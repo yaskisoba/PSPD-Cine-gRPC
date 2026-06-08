@@ -5,8 +5,8 @@ const protoLoader = require('@grpc/proto-loader');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
 
-// Resolve proto path: works both locally (../proto/) and inside Docker (./proto/)
 const localProto = path.join(__dirname, '..', 'proto', 'reviews.proto');
 const dockerProto = path.join(__dirname, 'proto', 'reviews.proto');
 const PROTO_PATH = fs.existsSync(localProto) ? localProto : dockerProto;
@@ -21,7 +21,6 @@ const packageDef = protoLoader.loadSync(PROTO_PATH, {
 
 const reviewsProto = grpc.loadPackageDefinition(packageDef).reviews;
 
-// ── In-memory store: Map<movie_id, Review[]> ──────────────────────────────────
 const reviewsDB = new Map();
 
 const seedReviews = [
@@ -43,7 +42,6 @@ seedReviews.forEach(r => {
   reviewsDB.get(r.movie_id).push(review);
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function calcAverage(movieId) {
   const list = reviewsDB.get(movieId) || [];
   if (list.length === 0) return { average: 0.0, total_reviews: 0 };
@@ -53,7 +51,6 @@ function calcAverage(movieId) {
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-// ── Unary: AddReview ──────────────────────────────────────────────────────────
 function addReview(call, callback) {
   const { movie_id, author, rating, comment } = call.request;
   console.log(`[ReviewsService] AddReview called | movie_id=${movie_id}`);
@@ -86,7 +83,6 @@ function addReview(call, callback) {
   callback(null, review);
 }
 
-// ── Unary: GetMovieRating ─────────────────────────────────────────────────────
 function getMovieRating(call, callback) {
   const { movie_id } = call.request;
   console.log(`[ReviewsService] GetMovieRating called | movie_id=${movie_id}`);
@@ -102,7 +98,6 @@ function getMovieRating(call, callback) {
   callback(null, { movie_id, average, total_reviews });
 }
 
-// ── Server Streaming: GetMovieReviews ─────────────────────────────────────────
 function getMovieReviews(call) {
   const { movie_id } = call.request;
   const list = reviewsDB.get(movie_id) || [];
@@ -126,7 +121,6 @@ function getMovieReviews(call) {
   });
 }
 
-// ── Bidirectional Streaming: LiveReviewSession ────────────────────────────────
 function liveReviewSession(call) {
   console.log('[ReviewsService] LiveReviewSession called | session started');
 
@@ -166,7 +160,6 @@ function liveReviewSession(call) {
   });
 }
 
-// ── Server bootstrap ──────────────────────────────────────────────────────────
 const server = new grpc.Server();
 
 server.addService(reviewsProto.ReviewService.service, {
@@ -190,9 +183,95 @@ server.bindAsync(
   }
 );
 
-// ── Graceful shutdown ─────────────────────────────────────────────────────────
+
+function parseBody(req) {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    req.on('data', chunk => { data += chunk; });
+    req.on('end', () => {
+      try { resolve(data ? JSON.parse(data) : {}); }
+      catch (e) { reject(e); }
+    });
+    req.on('error', reject);
+  });
+}
+
+function sendJSON(res, statusCode, obj) {
+  res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(obj));
+}
+
+const RATING_RE  = /^\/movies\/([^/]+)\/rating$/;
+const REVIEWS_RE = /^\/movies\/([^/]+)\/reviews$/;
+
+const restServer = http.createServer(async (req, res) => {
+  const { method } = req;
+  const pathname = req.url.split('?')[0];
+
+  try {
+    if (method === 'POST' && pathname === '/reviews') {
+      const body = await parseBody(req);
+      const { movie_id, author, rating, comment } = body;
+
+      if (!movie_id || !author) {
+        return sendJSON(res, 422, { error: 'Campos obrigatórios ausentes: movie_id, author' });
+      }
+      if (rating == null || rating < 0.0 || rating > 10.0) {
+        return sendJSON(res, 422, { error: 'rating deve ser entre 0.0 e 10.0' });
+      }
+
+      const review = {
+        id: uuidv4(),
+        movie_id,
+        author,
+        rating,
+        comment: comment || '',
+        created_at: new Date().toISOString(),
+      };
+
+      if (!reviewsDB.has(movie_id)) reviewsDB.set(movie_id, []);
+      reviewsDB.get(movie_id).push(review);
+
+      console.log(`[REST] AddReview | movie_id=${movie_id}`);
+      return sendJSON(res, 201, review);
+    }
+
+    let m;
+
+    if (method === 'GET' && (m = RATING_RE.exec(pathname))) {
+      const movie_id = m[1];
+      const { average, total_reviews } = calcAverage(movie_id);
+      console.log(`[REST] GetMovieRating | movie_id=${movie_id}`);
+      return sendJSON(res, 200, { movie_id, average, total_reviews });
+    }
+
+    if (method === 'GET' && (m = REVIEWS_RE.exec(pathname))) {
+      const movie_id = m[1];
+      const list = reviewsDB.get(movie_id) || [];
+      console.log(`[REST] GetMovieReviews | movie_id=${movie_id} | count=${list.length}`);
+      return sendJSON(res, 200, list);
+    }
+
+    sendJSON(res, 404, { error: 'Not Found' });
+  } catch (err) {
+    console.error('[REST] Error:', err);
+    sendJSON(res, 500, { error: 'Internal Server Error' });
+  }
+});
+
+const REST_PORT = process.env.REST_PORT || '8082';
+
+restServer.listen(REST_PORT, () => {
+  console.log(`Reviews REST API (Módulo B) escutando na porta ${REST_PORT}`);
+});
+
+restServer.on('error', err => {
+  console.error('[REST] Server error:', err);
+});
+
 function shutdown(signal) {
   console.log(`[ReviewsService] Received ${signal}, shutting down gracefully...`);
+  restServer.close();
   server.tryShutdown(err => {
     if (err) {
       console.error('[ReviewsService] Shutdown error:', err);

@@ -5,6 +5,7 @@ services:
       dockerfile: movies-service/Dockerfile
     expose:
       - "50051"
+      - "8081"
 
   reviews-service:
     build:
@@ -12,6 +13,7 @@ services:
       dockerfile: reviews-service/Dockerfile
     expose:
       - "50052"
+      - "8082"
 
   gateway:
     build:
@@ -22,6 +24,8 @@ services:
     environment:
       MOVIES_SERVICE_ADDR: movies-service:50051
       REVIEWS_SERVICE_ADDR: reviews-service:50052
+      MOVIES_REST_ADDR: movies-service:8081
+      REVIEWS_REST_ADDR: reviews-service:8082
     depends_on:
       - movies-service
       - reviews-service

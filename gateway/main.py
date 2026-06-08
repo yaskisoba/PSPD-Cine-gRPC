@@ -7,10 +7,11 @@ if str(_GENERATED_DIR) not in sys.path:
     sys.path.insert(0, str(_GENERATED_DIR))
 
 import grpc
+import httpx
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -18,8 +19,10 @@ from generated import movies_pb2, movies_pb2_grpc
 from generated import reviews_pb2, reviews_pb2_grpc
 
 
-MOVIES_ADDR = os.getenv("MOVIES_SERVICE_ADDR",  "localhost:50051")
-REVIEWS_ADDR = os.getenv("REVIEWS_SERVICE_ADDR", "localhost:50052")
+MOVIES_ADDR      = os.getenv("MOVIES_SERVICE_ADDR",  "localhost:50051")
+REVIEWS_ADDR     = os.getenv("REVIEWS_SERVICE_ADDR", "localhost:50052")
+MOVIES_REST_ADDR = os.getenv("MOVIES_REST_ADDR",     "localhost:8081")
+REVIEWS_REST_ADDR = os.getenv("REVIEWS_REST_ADDR",   "localhost:8082")
 
 
 movie_stub:  movies_pb2_grpc.MovieServiceStub  | None = None
@@ -159,7 +162,11 @@ def _grpc_error(e: grpc.RpcError) -> HTTPException:
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "movies_addr": MOVIES_ADDR, "reviews_addr": REVIEWS_ADDR}
+    return {
+        "status": "ok",
+        "grpc": {"movies_addr": MOVIES_ADDR, "reviews_addr": REVIEWS_ADDR},
+        "rest": {"movies_addr": MOVIES_REST_ADDR, "reviews_addr": REVIEWS_REST_ADDR},
+    }
 
 
 
@@ -259,3 +266,119 @@ def get_rating(movie_id: str):
         return _rating_to_dict(review_stub.GetMovieRating(req))
     except grpc.RpcError as e:
         raise _grpc_error(e)
+
+
+# ── REST backend router (/rest/...) ───────────────────────────────────────────
+
+rest_router = APIRouter(prefix="/rest", tags=["REST Backend"])
+
+
+def _rest_error(e: httpx.HTTPStatusError) -> HTTPException:
+    code = e.response.status_code
+    try:
+        detail = e.response.json().get("error", e.response.text)
+    except Exception:
+        detail = e.response.text
+    if code == 404:
+        return HTTPException(status_code=404, detail=detail)
+    if code == 422:
+        return HTTPException(status_code=422, detail=detail)
+    return HTTPException(status_code=502, detail=f"REST upstream error {code}: {detail}")
+
+
+@rest_router.get("/movies", response_model=List[MovieOut])
+def rest_list_movies(genre: Optional[str] = None):
+    url = f"http://{MOVIES_REST_ADDR}/movies"
+    params = {"genre": genre} if genre else {}
+    try:
+        r = httpx.get(url, params=params, timeout=10)
+        r.raise_for_status()
+        return r.json()
+    except httpx.HTTPStatusError as e:
+        raise _rest_error(e)
+
+
+@rest_router.post("/movies/bulk-import", response_model=BulkImportOut, status_code=201)
+def rest_bulk_import(body: BulkImportIn):
+    try:
+        r = httpx.post(
+            f"http://{MOVIES_REST_ADDR}/movies/bulk",
+            json={"movies": [m.model_dump() for m in body.movies]},
+            timeout=10,
+        )
+        r.raise_for_status()
+        return r.json()
+    except httpx.HTTPStatusError as e:
+        raise _rest_error(e)
+
+
+@rest_router.get("/movies/{movie_id}", response_model=MovieDetailOut)
+def rest_get_movie(movie_id: str):
+    try:
+        mr = httpx.get(f"http://{MOVIES_REST_ADDR}/movies/{movie_id}", timeout=10)
+        mr.raise_for_status()
+        movie_data = mr.json()
+    except httpx.HTTPStatusError as e:
+        raise _rest_error(e)
+
+    try:
+        rr = httpx.get(f"http://{REVIEWS_REST_ADDR}/movies/{movie_id}/rating", timeout=10)
+        rr.raise_for_status()
+        rating_data = rr.json()
+
+        rv = httpx.get(f"http://{REVIEWS_REST_ADDR}/movies/{movie_id}/reviews", timeout=10)
+        rv.raise_for_status()
+        reviews_data = rv.json()
+    except httpx.HTTPStatusError as e:
+        raise _rest_error(e)
+
+    return MovieDetailOut(
+        movie=MovieOut(**movie_data),
+        rating=RatingOut(**rating_data),
+        reviews=[ReviewOut(**rev) for rev in reviews_data],
+    )
+
+
+@rest_router.post("/movies", response_model=MovieOut, status_code=201)
+def rest_create_movie(body: CreateMovieIn):
+    try:
+        r = httpx.post(
+            f"http://{MOVIES_REST_ADDR}/movies",
+            json=body.model_dump(),
+            timeout=10,
+        )
+        r.raise_for_status()
+        return r.json()
+    except httpx.HTTPStatusError as e:
+        raise _rest_error(e)
+
+
+@rest_router.post("/movies/{movie_id}/reviews", response_model=ReviewOut, status_code=201)
+def rest_add_review(movie_id: str, body: AddReviewIn):
+    payload = {"movie_id": movie_id, **body.model_dump()}
+    try:
+        r = httpx.post(
+            f"http://{REVIEWS_REST_ADDR}/reviews",
+            json=payload,
+            timeout=10,
+        )
+        r.raise_for_status()
+        return r.json()
+    except httpx.HTTPStatusError as e:
+        raise _rest_error(e)
+
+
+@rest_router.get("/movies/{movie_id}/rating", response_model=RatingOut)
+def rest_get_rating(movie_id: str):
+    try:
+        r = httpx.get(
+            f"http://{REVIEWS_REST_ADDR}/movies/{movie_id}/rating",
+            timeout=10,
+        )
+        r.raise_for_status()
+        return r.json()
+    except httpx.HTTPStatusError as e:
+        raise _rest_error(e)
+
+
+app.include_router(rest_router)

@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +20,66 @@ import (
 
 	pb "github.com/cinegrpc/movies-service/generated"
 )
+
+// ── REST types (JSON serialization) ──────────────────────────────────────────
+
+type restMovie struct {
+	ID        string   `json:"id"`
+	Title     string   `json:"title"`
+	Genre     string   `json:"genre"`
+	Year      int32    `json:"year"`
+	Director  string   `json:"director"`
+	Synopsis  string   `json:"synopsis"`
+	Cast      []string `json:"cast"`
+	PosterURL string   `json:"poster_url,omitempty"`
+}
+
+type restCreateMovieReq struct {
+	Title     string   `json:"title"`
+	Genre     string   `json:"genre"`
+	Year      int32    `json:"year"`
+	Director  string   `json:"director"`
+	Synopsis  string   `json:"synopsis"`
+	Cast      []string `json:"cast"`
+	PosterURL string   `json:"poster_url"`
+}
+
+type restBulkImportReq struct {
+	Movies []restCreateMovieReq `json:"movies"`
+}
+
+type restBulkImportRes struct {
+	Imported int32    `json:"imported"`
+	Failed   int32    `json:"failed"`
+	Errors   []string `json:"errors"`
+}
+
+func pbMovieToRest(m *pb.Movie) restMovie {
+	cast := m.Cast
+	if cast == nil {
+		cast = []string{}
+	}
+	return restMovie{
+		ID:        m.Id,
+		Title:     m.Title,
+		Genre:     m.Genre,
+		Year:      m.Year,
+		Director:  m.Director,
+		Synopsis:  m.Synopsis,
+		Cast:      cast,
+		PosterURL: m.PosterUrl,
+	}
+}
+
+func writeJSON(w http.ResponseWriter, statusCode int, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(v) //nolint:errcheck
+}
+
+func writeError(w http.ResponseWriter, statusCode int, msg string) {
+	writeJSON(w, statusCode, map[string]string{"error": msg})
+}
 
 
 type movieServer struct {
@@ -191,15 +254,150 @@ func (s *movieServer) BulkImportMovies(stream pb.MovieService_BulkImportMoviesSe
 }
 
 
+// ── REST handlers ─────────────────────────────────────────────────────────────
+
+func (s *movieServer) handleMovies(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		genre := r.URL.Query().Get("genre")
+		s.mu.RLock()
+		snapshot := make([]*pb.Movie, 0, len(s.movies))
+		for _, m := range s.movies {
+			if genre == "" || strings.EqualFold(m.Genre, genre) {
+				snapshot = append(snapshot, m)
+			}
+		}
+		s.mu.RUnlock()
+
+		result := make([]restMovie, len(snapshot))
+		for i, m := range snapshot {
+			result[i] = pbMovieToRest(m)
+		}
+		writeJSON(w, http.StatusOK, result)
+
+	case http.MethodPost:
+		var req restCreateMovieReq
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "JSON inválido: "+err.Error())
+			return
+		}
+		if strings.TrimSpace(req.Title) == "" {
+			writeError(w, http.StatusUnprocessableEntity, "título é obrigatório")
+			return
+		}
+
+		s.mu.Lock()
+		movie := &pb.Movie{
+			Id:        uuid.NewString(),
+			Title:     req.Title,
+			Genre:     req.Genre,
+			Year:      req.Year,
+			Director:  req.Director,
+			Synopsis:  req.Synopsis,
+			Cast:      req.Cast,
+			PosterUrl: req.PosterURL,
+		}
+		s.movies[movie.Id] = movie
+		s.mu.Unlock()
+
+		writeJSON(w, http.StatusCreated, pbMovieToRest(movie))
+
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "método não permitido")
+	}
+}
+
+func (s *movieServer) handleBulkImport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "método não permitido")
+		return
+	}
+
+	var req restBulkImportReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "JSON inválido: "+err.Error())
+		return
+	}
+
+	var imported, failed int32
+	errs := []string{}
+
+	s.mu.Lock()
+	for _, m := range req.Movies {
+		if strings.TrimSpace(m.Title) == "" {
+			failed++
+			errs = append(errs, "item ignorado: título vazio")
+			continue
+		}
+		movie := &pb.Movie{
+			Id:        uuid.NewString(),
+			Title:     m.Title,
+			Genre:     m.Genre,
+			Year:      m.Year,
+			Director:  m.Director,
+			Synopsis:  m.Synopsis,
+			Cast:      m.Cast,
+			PosterUrl: m.PosterURL,
+		}
+		s.movies[movie.Id] = movie
+		imported++
+	}
+	s.mu.Unlock()
+
+	writeJSON(w, http.StatusCreated, restBulkImportRes{Imported: imported, Failed: failed, Errors: errs})
+}
+
+func (s *movieServer) handleMovieByID(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/movies/")
+	if id == "" || strings.Contains(id, "/") {
+		writeError(w, http.StatusNotFound, "não encontrado")
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "método não permitido")
+		return
+	}
+
+	s.mu.RLock()
+	m, ok := s.movies[id]
+	s.mu.RUnlock()
+
+	if !ok {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("filme com id %q não encontrado", id))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, pbMovieToRest(m))
+}
+
+func (s *movieServer) startRESTServer() {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/movies/bulk", s.handleBulkImport)
+	mux.HandleFunc("/movies/", s.handleMovieByID)
+	mux.HandleFunc("/movies", s.handleMovies)
+
+	log.Println("Movies REST API (Módulo A) escutando em :8081")
+	if err := http.ListenAndServe(":8081", mux); err != nil {
+		log.Fatalf("falha ao servir REST: %v", err)
+	}
+}
+
+// ── gRPC + REST bootstrap ─────────────────────────────────────────────────────
+
 func main() {
+	srv := newMovieServer()
+
 	lis, err := net.Listen("tcp", ":50051")
 	if err != nil {
 		log.Fatalf("falha ao abrir porta 50051: %v", err)
 	}
 
 	grpcServer := grpc.NewServer()
-	pb.RegisterMovieServiceServer(grpcServer, newMovieServer())
+	pb.RegisterMovieServiceServer(grpcServer, srv)
 	reflection.Register(grpcServer)
+
+	go srv.startRESTServer()
 
 	log.Println("Movies Service (Módulo A) escutando em :50051")
 	if err := grpcServer.Serve(lis); err != nil {
